@@ -12,29 +12,28 @@ ATH = {
     'vechain': 0.28
 }
 
+# Estos son los "ids" exactos de CoinGecko
+COINGECKO_IDS = {
+    'bitcoin': 'bitcoin',
+    'bittensor': 'bittensor',
+    'vechain': 'vechain'
+}
+
 alerted = {k: False for k in ATH}
 app = Flask(__name__)
 
-def get_price(token_id):
+def get_price_and_sma(token_id):
     try:
-        url = 'https://api.coingecko.com/api/v3/simple/price'
-        params = {'ids': token_id, 'vs_currencies': 'usd'}
-        data = requests.get(url, params=params).json()
-        return data.get(token_id, {}).get('usd', None)
-    except:
-        return None
-
-def get_sma_200(token_id):
-    try:
-        url = f'https://api.coingecko.com/api/v3/coins/{token_id}/market_chart'
+        url = f"https://api.coingecko.com/api/v3/coins/{token_id}/market_chart"
         params = {'vs_currency': 'usd', 'days': '1500', 'interval': 'daily'}
-        data = requests.get(url, params=params).json().get('prices', [])
-        prices = [p[1] for p in data]
+        res = requests.get(url, params=params).json()
+        prices = [p[1] for p in res.get('prices', [])]
         if len(prices) < 200:
-            return None
-        return sum(prices[-200:]) / 200
+            return None, None
+        sma = sum(prices[-200:]) / 200
+        return prices[-1], sma
     except:
-        return None
+        return None, None
 
 def send_telegram_message(text):
     url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage'
@@ -42,9 +41,8 @@ def send_telegram_message(text):
     requests.post(url, data=payload)
 
 def check_alerts():
-    for token in ATH:
-        price = get_price(token)
-        sma = get_sma_200(token)
+    for token, coingecko_id in COINGECKO_IDS.items():
+        price, sma = get_price_and_sma(coingecko_id)
         if price is None or sma is None:
             continue
         if sma > ATH[token] and not alerted[token]:
@@ -59,9 +57,8 @@ def webhook():
 
     if message == "/status":
         status_msg = "📊 Estado actual:\n"
-        for token in ATH:
-            price = get_price(token)
-            sma = get_sma_200(token)
+        for token, coingecko_id in COINGECKO_IDS.items():
+            price, sma = get_price_and_sma(coingecko_id)
             if price is None or sma is None:
                 status_msg += f"{token.upper()}: ❌ Error al obtener datos.\n\n"
                 continue
